@@ -9,7 +9,7 @@ SKIP_FRAMES   = 2          # procesar 1 de cada N frames
 FRAMES_ON     = 5          # frames seguidos para confirmar presencia
 FRAMES_OFF    = 8          # frames seguidos para confirmar ausencia
 DIFF_UMBRAL   = 25         # diferencia de píxel para considerar cambio
-FILL_MIN      = 0.10       # % mínimo del ROI alterado para detectar objeto
+FILL_MIN      = 0.02       # % mínimo del ROI alterado para detectar objeto
 ALPHA_FONDO   = 0.002      # velocidad de actualización del fondo (muy lenta)
 
 # ROI central
