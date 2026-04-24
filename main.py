@@ -3,8 +3,8 @@ import numpy as np
 
 # ── Configuración ──────────────────────────────────────────────
 CAMARA        = 0
-ANCHO         = 640
-ALTO          = 480
+ANCHO         = 1920
+ALTO          = 1080
 SKIP_FRAMES   = 2          # procesar 1 de cada N frames
 FRAMES_ON     = 5          # frames seguidos para confirmar presencia
 FRAMES_OFF    = 8          # frames seguidos para confirmar ausencia
