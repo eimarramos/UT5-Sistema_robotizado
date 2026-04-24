@@ -50,7 +50,7 @@ while True:
         _, mascara = cv2.threshold(mascara, 200, 255, cv2.THRESH_BINARY)
         mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN, kernel, iterations=1)
         mascara = cv2.dilate(mascara, kernel, iterations=2)
-        contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        _, contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         num_objetos = len([c for c in contornos if cv2.contourArea(c) > AREA_MIN])
 
     # Dibujar rectángulos sobre objetos visibles
