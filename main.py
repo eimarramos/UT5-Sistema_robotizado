@@ -17,7 +17,7 @@ while True:
     _, mascara = cv2.threshold(mascara, 200, 255, cv2.THRESH_BINARY)
     mascara = cv2.dilate(mascara, None, iterations=2)
 
-    contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    _, contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     # Lógica de detección
     hay_objeto = False
