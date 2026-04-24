@@ -3,8 +3,8 @@ import numpy as np
 
 # ── Configuración ──────────────────────────────────────────────
 CAMARA        = 0
-ANCHO         = 640
-ALTO          = 480
+ANCHO         = 1920
+ALTO          = 1080
 UMBRAL_FG     = 180
 HISTORY       = 300
 VAR_THRESHOLD = 40
@@ -20,7 +20,7 @@ ROI_X2 = int(ANCHO * 0.75)
 ROI_Y2 = int(ALTO  * 0.80)
 
 # Área mínima ocupada dentro del ROI para confirmar objeto (%)
-FILL_MIN = 0.08   # 8% del ROI debe estar en movimiento
+FILL_MIN = 0.02   # 2% del ROI debe estar en movimiento
 # ──────────────────────────────────────────────────────────────
 
 cap = cv2.VideoCapture(CAMARA)
