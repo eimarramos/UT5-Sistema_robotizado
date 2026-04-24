@@ -74,7 +74,7 @@ while True:
         mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, kernel_close, iterations=2)
 
         # Contornos en imagen pequeña
-        contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        _, contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         # Filtrar por área (área en escala pequeña → AREA_MIN/4)
         grandes = [c for c in contornos if cv2.contourArea(c) > AREA_MIN / 4]
