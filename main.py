@@ -3,24 +3,20 @@ import numpy as np
 
 # ── Configuración ──────────────────────────────────────────────
 CAMARA        = 0
-ANCHO         = 1920
-ALTO          = 1080
-UMBRAL_FG     = 180
-HISTORY       = 300
-VAR_THRESHOLD = 40
-FRAMES_ON     = 4
-FRAMES_OFF    = 6
-LR_LIBRE      = 0.004
-SKIP_FRAMES   = 2
+ANCHO         = 640
+ALTO          = 480
+SKIP_FRAMES   = 2          # procesar 1 de cada N frames
+FRAMES_ON     = 5          # frames seguidos para confirmar presencia
+FRAMES_OFF    = 8          # frames seguidos para confirmar ausencia
+DIFF_UMBRAL   = 25         # diferencia de píxel para considerar cambio
+FILL_MIN      = 0.10       # % mínimo del ROI alterado para detectar objeto
+ALPHA_FONDO   = 0.002      # velocidad de actualización del fondo (muy lenta)
 
-# Recuadro fijo central (porcentaje del frame)
+# ROI central
 ROI_X1 = int(ANCHO * 0.25)
 ROI_Y1 = int(ALTO  * 0.20)
 ROI_X2 = int(ANCHO * 0.75)
 ROI_Y2 = int(ALTO  * 0.80)
-
-# Área mínima ocupada dentro del ROI para confirmar objeto (%)
-FILL_MIN = 0.02   # 2% del ROI debe estar en movimiento
 # ──────────────────────────────────────────────────────────────
 
 cap = cv2.VideoCapture(CAMARA)
@@ -28,21 +24,34 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH,  ANCHO)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, ALTO)
 cap.set(cv2.CAP_PROP_FPS, 30)
 
-fgbg = cv2.createBackgroundSubtractorMOG2(
-    history=HISTORY,
-    varThreshold=VAR_THRESHOLD,
-    detectShadows=False
-)
+roi_area = (ROI_X2 - ROI_X1) * (ROI_Y2 - ROI_Y1)
 
 kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
 
-# Calentar fondo
-print("Calibrando fondo...")
-for _ in range(30):
+# ── Aprender fondo inicial ─────────────────────────────────────
+print("Calibrando fondo (mantén el recuadro vacío)...")
+muestras = []
+while len(muestras) < 40:
     ret, f = cap.read()
-    if ret:
-        fgbg.apply(f, learningRate=0.1)
+    if not ret:
+        continue
+    roi = cv2.cvtColor(f[ROI_Y1:ROI_Y2, ROI_X1:ROI_X2], cv2.COLOR_BGR2GRAY)
+    roi = cv2.GaussianBlur(roi, (7, 7), 0)
+    muestras.append(roi.astype(np.float32))
+
+    # Mostrar progreso
+    prog = f.copy()
+    pct  = int(len(muestras) / 40 * (ROI_X2 - ROI_X1))
+    cv2.rectangle(prog, (ROI_X1, ROI_Y1), (ROI_X2, ROI_Y2), (30, 200, 30), 2)
+    cv2.rectangle(prog, (ROI_X1, ROI_Y2 + 8), (ROI_X1 + pct, ROI_Y2 + 22), (30, 200, 30), -1)
+    cv2.putText(prog, "Calibrando fondo...", (ROI_X1, ROI_Y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (30, 200, 30), 1)
+    cv2.imshow("Deteccion de Objetos", prog)
+    cv2.waitKey(1)
+
+# Fondo inicial = mediana de las muestras (robusto a ruido)
+fondo = np.median(muestras, axis=0).astype(np.float32)
 
 # Estado
 contador_on  = 0
@@ -51,10 +60,7 @@ hay_objeto   = False
 frame_count  = 0
 roi_fill     = 0.0
 
-# Área del ROI en resolución completa
-roi_area = (ROI_X2 - ROI_X1) * (ROI_Y2 - ROI_Y1)
-
-print("Listo. Pulsa Q para salir.")
+print("Listo. Pulsa Q para salir, R para recalibrar fondo.")
 
 while True:
     ret, frame = cap.read()
@@ -66,22 +72,29 @@ while True:
 
     if frame_count % SKIP_FRAMES == 0:
 
-        gris = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gris = cv2.GaussianBlur(gris, (5, 5), 0)
+        # Extraer ROI en gris y suavizado
+        roi_gris = cv2.cvtColor(
+            frame[ROI_Y1:ROI_Y2, ROI_X1:ROI_X2],
+            cv2.COLOR_BGR2GRAY
+        ).astype(np.float32)
+        roi_gris = cv2.GaussianBlur(roi_gris, (7, 7), 0)
 
-        lr = 0 if hay_objeto else LR_LIBRE
-        mascara = fgbg.apply(gris, learningRate=lr)
+        # Diferencia absoluta con el fondo de referencia
+        diff = cv2.absdiff(roi_gris, fondo)
+        _, mascara = cv2.threshold(diff, DIFF_UMBRAL, 255, cv2.THRESH_BINARY)
+        mascara = mascara.astype(np.uint8)
 
-        _, mascara = cv2.threshold(mascara, UMBRAL_FG, 255, cv2.THRESH_BINARY)
+        # Morfología: eliminar ruido y rellenar huecos
         mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN,  kernel_open,  iterations=1)
         mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, kernel_close, iterations=2)
 
-        # Recortar máscara al ROI central
-        roi_mascara = mascara[ROI_Y1:ROI_Y2, ROI_X1:ROI_X2]
+        # Porcentaje de ROI alterado
+        roi_fill = cv2.countNonZero(mascara) / roi_area
 
-        # Porcentaje de píxeles activos dentro del ROI
-        pixeles_activos = cv2.countNonZero(roi_mascara)
-        roi_fill = pixeles_activos / roi_area
+        # Actualizar fondo MUY lentamente solo si NO hay objeto
+        # → se adapta a cambios de iluminación pero no absorbe objetos estáticos
+        if not hay_objeto:
+            cv2.accumulateWeighted(roi_gris, fondo, ALPHA_FONDO)
 
         # Suavizado temporal con histeresis
         if roi_fill >= FILL_MIN:
@@ -98,49 +111,61 @@ while True:
 
     # ── Dibujar ROI ────────────────────────────────────────────
     color_roi = (0, 50, 220) if hay_objeto else (30, 200, 30)
-    grosor_roi = 3 if hay_objeto else 2
+    grosor    = 3 if hay_objeto else 2
+
+    # Fondo semitransparente del ROI
+    overlay = mostrar.copy()
+    cv2.rectangle(overlay, (ROI_X1, ROI_Y1), (ROI_X2, ROI_Y2), color_roi, -1)
+    cv2.addWeighted(overlay, 0.06, mostrar, 0.94, 0, mostrar)
 
     # Esquinas estilo visor
-    largo = 30
+    L = 28
     for (cx, cy, dx, dy) in [
         (ROI_X1, ROI_Y1,  1,  1),
         (ROI_X2, ROI_Y1, -1,  1),
         (ROI_X1, ROI_Y2,  1, -1),
         (ROI_X2, ROI_Y2, -1, -1),
     ]:
-        cv2.line(mostrar, (cx, cy), (cx + dx * largo, cy), color_roi, grosor_roi)
-        cv2.line(mostrar, (cx, cy), (cx, cy + dy * largo), color_roi, grosor_roi)
-
-    # Rectángulo central semitransparente
-    overlay = mostrar.copy()
-    cv2.rectangle(overlay, (ROI_X1, ROI_Y1), (ROI_X2, ROI_Y2), color_roi, -1)
-    cv2.addWeighted(overlay, 0.06, mostrar, 0.94, 0, mostrar)
-    cv2.rectangle(mostrar, (ROI_X1, ROI_Y1), (ROI_X2, ROI_Y2), color_roi, 1)
+        cv2.line(mostrar, (cx, cy), (cx + dx * L, cy), color_roi, grosor)
+        cv2.line(mostrar, (cx, cy), (cx, cy + dy * L), color_roi, grosor)
 
     # ── HUD superior ───────────────────────────────────────────
     cv2.rectangle(mostrar, (0, 0), (ANCHO, 50), (10, 10, 10), -1)
-
-    if hay_objeto:
-        texto  = "OBJETO DETECTADO"
-        color  = (0, 50, 220)
-    else:
-        texto  = "SIN OBJETO"
-        color  = (30, 200, 30)
-
+    texto = "OBJETO DETECTADO" if hay_objeto else "SIN OBJETO"
     cv2.putText(mostrar, texto, (14, 34),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.1, color, 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 1.1, color_roi, 2)
 
-    # Barra de llenado del ROI (indicador visual de cuánto movimiento hay)
-    barra_max = ANCHO - 160
-    barra_val = int(min(roi_fill / FILL_MIN, 1.0) * barra_max)
-    cv2.rectangle(mostrar, (ANCHO - barra_max - 10, 60), (ANCHO - 10, 74), (40, 40, 40), -1)
-    cv2.rectangle(mostrar, (ANCHO - barra_max - 10, 60), (ANCHO - barra_max - 10 + barra_val, 74), color_roi, -1)
-    cv2.putText(mostrar, "MOV", (ANCHO - barra_max - 50, 73),
+    # Barra de diferencia respecto al fondo
+    barra_w   = 180
+    barra_val = int(min(roi_fill / FILL_MIN, 1.0) * barra_w)
+    bx        = ANCHO - barra_w - 14
+    cv2.rectangle(mostrar, (bx, 58), (bx + barra_w, 72), (40, 40, 40), -1)
+    cv2.rectangle(mostrar, (bx, 58), (bx + barra_val, 72), color_roi, -1)
+    cv2.putText(mostrar, "DIFF", (bx - 42, 71),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, (160, 160, 160), 1)
 
     cv2.imshow("Deteccion de Objetos", mostrar)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+
+    tecla = cv2.waitKey(1) & 0xFF
+    if tecla == ord('q'):
         break
+    elif tecla == ord('r'):
+        # Recalibrar fondo en caliente
+        print("Recalibrando...")
+        muestras = []
+        while len(muestras) < 40:
+            ret, f = cap.read()
+            if not ret:
+                continue
+            roi = cv2.cvtColor(f[ROI_Y1:ROI_Y2, ROI_X1:ROI_X2], cv2.COLOR_BGR2GRAY)
+            roi = cv2.GaussianBlur(roi, (7, 7), 0)
+            muestras.append(roi.astype(np.float32))
+            cv2.waitKey(1)
+        fondo = np.median(muestras, axis=0).astype(np.float32)
+        hay_objeto   = False
+        contador_on  = 0
+        contador_off = 0
+        print("Fondo recalibrado.")
 
 cap.release()
 cv2.destroyAllWindows()
