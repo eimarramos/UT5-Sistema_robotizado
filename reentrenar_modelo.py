@@ -10,13 +10,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="runs/detect/chess_detector/weights/best.pt",
-        help="Modelo base .pt (preentrenado o tu ultimo best.pt)",
+        default="yolov5n.pt",
+        help="Modelo base .pt (recomendado en Nano: yolov5n.pt)",
     )
-    parser.add_argument("--epochs", type=int, default=40, help="Numero de epocas")
-    parser.add_argument("--imgsz", type=int, default=640, help="Tamano de imagen")
+    parser.add_argument("--epochs", type=int, default=60, help="Numero de epocas")
+    parser.add_argument("--imgsz", type=int, default=512, help="Tamano de imagen")
     parser.add_argument("--batch", type=int, default=8, help="Batch size")
-    parser.add_argument("--name", type=str, default="chess_detector_custom", help="Nombre del experimento")
+    parser.add_argument("--name", type=str, default="chess_nano_v5", help="Nombre del experimento")
     return parser.parse_args()
 
 
@@ -25,7 +25,10 @@ def resolve_model(path_str: str) -> str:
     if path.exists():
         return str(path)
 
-    fallback = Path("yolo11n.pt")
+    if path_str.lower() == "yolov5n.pt":
+        return path_str
+
+    fallback = Path("yolov5n.pt")
     if fallback.exists():
         print(f"[AVISO] No existe {path}. Se usara {fallback}.")
         return str(fallback)

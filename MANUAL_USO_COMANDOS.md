@@ -106,15 +106,31 @@ Entrenamiento base:
 python reentrenar_modelo.py
 ```
 
-Entrenamiento recomendado (ejemplo):
+Entrenamiento recomendado para Jetson Nano (YOLOv5n):
 
 ```bash
-python reentrenar_modelo.py --model runs/detect/chess_detector/weights/best.pt --epochs 60 --imgsz 640 --batch 8 --name chess_detector_v2
+python reentrenar_modelo.py --model yolov5n.pt --epochs 60 --imgsz 512 --batch 8 --name chess_nano_v5
 ```
+
+Continuar afinando desde tu ultimo best.pt ya migrado:
+
+```bash
+python reentrenar_modelo.py --model runs/detect/chess_nano_v5/weights/best.pt --epochs 40 --imgsz 512 --batch 8 --name chess_nano_v5_finetune
+```
+
+Reanudar entrenamiento pausado (desde last.pt):
+
+```bash
+yolo detect train resume model=runs/detect/chess_nano_v5/weights/last.pt
+```
+
+Nota:
+
+- Usa el last.pt de la carpeta de experimento que quieras continuar.
 
 Resultado esperado:
 
-- runs/detect/chess_detector_v2/weights/best.pt
+- runs/detect/chess_nano_v5/weights/best.pt
 
 ## 5) Inferencia en tiempo real
 
@@ -131,7 +147,7 @@ python realtime_inferencia.py
 Comando con parametros:
 
 ```bash
-python realtime_inferencia.py --model runs/detect/chess_detector_v2/weights/best.pt --camera 0 --conf 0.4 --iou 0.45 --imgsz 640
+python realtime_inferencia.py --model runs/detect/chess_nano_v5/weights/best.pt --camera 0 --conf 0.4 --iou 0.45 --imgsz 512
 ```
 
 Salir de la ventana: q o ESC.
