@@ -174,3 +174,7 @@ Salir de la ventana: q o ESC.
 
 - Clases incorrectas:
   - Verifica nombres en dataset/data.yaml (campo names).
+
+```
+python realtime_inferencia.py --model runs/detect/runs/detect/chess_nano_v5/weights/best.pt --camera 0 --backend dshow --conf 0.4 --iou 0.45 --imgsz 512
+```

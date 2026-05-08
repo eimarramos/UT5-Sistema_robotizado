@@ -1,4 +1,5 @@
 import argparse
+import platform
 import time
 from pathlib import Path
 
@@ -52,6 +53,13 @@ def parse_args() -> argparse.Namespace:
         default=720,
         help="Alto del stream de camara",
     )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="auto",
+        choices=["auto", "dshow", "msmf", "any"],
+        help="Backend de camara (Windows): auto, dshow, msmf o any",
+    )
     return parser.parse_args()
 
 
@@ -60,13 +68,44 @@ def resolve_model_path(model_arg: str) -> str:
     if model_path.exists():
         return str(model_path)
 
-    fallback = Path("yolo11n.pt")
-    if fallback.exists():
-        print(f"[AVISO] No se encontro '{model_arg}'. Se usara '{fallback}'.")
-        return str(fallback)
-
     raise FileNotFoundError(
-        f"No se encontro el modelo '{model_arg}' ni el fallback '{fallback}'."
+        f"No se encontro el modelo '{model_arg}'. Verifica la ruta al .pt entrenado."
+    )
+
+
+def open_camera(camera_index: int, backend: str, width: int, height: int) -> cv2.VideoCapture:
+    win = platform.system().lower() == "windows"
+
+    if backend == "dshow":
+        candidates = [cv2.CAP_DSHOW]
+    elif backend == "msmf":
+        candidates = [cv2.CAP_MSMF]
+    elif backend == "any":
+        candidates = [cv2.CAP_ANY]
+    else:
+        # En Windows, DirectShow suele ser mas estable que MSMF para webcams USB.
+        candidates = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY] if win else [cv2.CAP_ANY]
+
+    for api in candidates:
+        cap = cv2.VideoCapture(camera_index, api)
+        if not cap.isOpened():
+            cap.release()
+            continue
+
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+
+        ok, _ = cap.read()
+        if ok:
+            print(f"Camara abierta con backend={api}")
+            return cap
+
+        cap.release()
+
+    raise RuntimeError(
+        f"No se pudo abrir la camara con indice {camera_index}. "
+        "Prueba otro valor con --camera o cambia --backend."
     )
 
 
@@ -74,29 +113,32 @@ def main() -> None:
     args = parse_args()
 
     model_path = resolve_model_path(args.model)
+    print(f"Modelo cargado: {model_path}")
     model = YOLO(model_path)
 
-    cap = cv2.VideoCapture(args.camera)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
-    cap.set(cv2.CAP_PROP_FPS, 30)
-
-    if not cap.isOpened():
-        raise RuntimeError(
-            f"No se pudo abrir la camara con indice {args.camera}. "
-            "Prueba otro valor con --camera."
-        )
+    cap = open_camera(args.camera, args.backend, args.width, args.height)
 
     print("Iniciando inferencia en tiempo real...")
     print("Teclas: q o ESC para salir")
 
     prev_time = time.time()
+    consecutive_read_failures = 0
 
     while True:
         ok, frame = cap.read()
         if not ok:
-            print("[AVISO] No se pudo leer frame de la camara.")
-            break
+            consecutive_read_failures += 1
+            if consecutive_read_failures <= 10:
+                time.sleep(0.03)
+                continue
+
+            print("[AVISO] Fallo continuo de lectura. Reintentando abrir camara...")
+            cap.release()
+            cap = open_camera(args.camera, args.backend, args.width, args.height)
+            consecutive_read_failures = 0
+            continue
+
+        consecutive_read_failures = 0
 
         results = model.predict(
             source=frame,
