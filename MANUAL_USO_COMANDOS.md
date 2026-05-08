@@ -178,3 +178,7 @@ Salir de la ventana: q o ESC.
 ```
 python realtime_inferencia.py --model runs/detect/runs/detect/chess_nano_v5/weights/best.pt --camera 0 --backend dshow --conf 0.4 --iou 0.45 --imgsz 512
 ```
+
+```
+python reentrenar_modelo.py --model yolov5n.pt --epochs 60 --imgsz 512 --batch 8 --name chess_nano_v5
+```
