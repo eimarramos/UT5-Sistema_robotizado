@@ -1,6 +1,0 @@
-alfil negro y blanco
-reina negro
-rey blanco
-caballo blanco negro
-peon blanco negro
-torre blanco negro

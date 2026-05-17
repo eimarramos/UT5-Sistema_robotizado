@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 import cv2
-from ultralytics import YOLO
+import torch
 
 
 def parse_args() -> argparse.Namespace:
@@ -14,7 +14,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="runs/detect/chess_detector/weights/best.pt",
+        default="runs/detect/chess_nano_v5/weights/best.pt",
         help="Ruta del modelo .pt",
     )
     parser.add_argument(
@@ -57,8 +57,20 @@ def parse_args() -> argparse.Namespace:
         "--backend",
         type=str,
         default="auto",
-        choices=["auto", "dshow", "msmf", "any"],
-        help="Backend de camara (Windows): auto, dshow, msmf o any",
+        choices=["auto", "dshow", "msmf", "gstreamer", "any"],
+        help="Backend de camara: auto, dshow, msmf, gstreamer o any",
+    )
+    parser.add_argument(
+        "--yolov5-dir",
+        type=str,
+        default="third_party/yolov5",
+        help="Ruta al repositorio local de YOLOv5",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Dispositivo para PyTorch (auto, cpu, cuda, cuda:0)",
     )
     return parser.parse_args()
 
@@ -66,11 +78,33 @@ def parse_args() -> argparse.Namespace:
 def resolve_model_path(model_arg: str) -> str:
     model_path = Path(model_arg)
     if model_path.exists():
-        return str(model_path)
+        return str(model_path.resolve())
 
     raise FileNotFoundError(
         f"No se encontro el modelo '{model_arg}'. Verifica la ruta al .pt entrenado."
     )
+
+
+def resolve_yolov5_dir(yolov5_dir_arg: str) -> Path:
+    candidates = [
+        Path(yolov5_dir_arg),
+        Path("yolov5"),
+    ]
+
+    for candidate in candidates:
+        hubconf_path = candidate / "hubconf.py"
+        if hubconf_path.exists():
+            return candidate.resolve()
+
+    raise FileNotFoundError(
+        "No se encontro YOLOv5 local. Clona el repo en 'third_party/yolov5' o pasa --yolov5-dir."
+    )
+
+
+def resolve_device(device_arg: str) -> str:
+    if device_arg != "auto":
+        return device_arg
+    return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 def open_camera(camera_index: int, backend: str, width: int, height: int) -> cv2.VideoCapture:
@@ -80,6 +114,8 @@ def open_camera(camera_index: int, backend: str, width: int, height: int) -> cv2
         candidates = [cv2.CAP_DSHOW]
     elif backend == "msmf":
         candidates = [cv2.CAP_MSMF]
+    elif backend == "gstreamer":
+        candidates = [cv2.CAP_GSTREAMER]
     elif backend == "any":
         candidates = [cv2.CAP_ANY]
     else:
@@ -112,9 +148,23 @@ def open_camera(camera_index: int, backend: str, width: int, height: int) -> cv2
 def main() -> None:
     args = parse_args()
 
+    yolov5_dir = resolve_yolov5_dir(args.yolov5_dir)
     model_path = resolve_model_path(args.model)
+    device = resolve_device(args.device)
+
     print(f"Modelo cargado: {model_path}")
-    model = YOLO(model_path)
+    print(f"Repo YOLOv5: {yolov5_dir}")
+    print(f"Dispositivo: {device}")
+
+    model = torch.hub.load(
+        str(yolov5_dir),
+        "custom",
+        path=model_path,
+        source="local",
+        device=device,
+    )
+    model.conf = args.conf
+    model.iou = args.iou
 
     cap = open_camera(args.camera, args.backend, args.width, args.height)
 
@@ -140,15 +190,12 @@ def main() -> None:
 
         consecutive_read_failures = 0
 
-        results = model.predict(
-            source=frame,
-            conf=args.conf,
-            iou=args.iou,
-            imgsz=args.imgsz,
-            verbose=False,
-        )
+        # YOLOv5 via torch hub trabaja en RGB.
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = model(frame_rgb, size=args.imgsz)
 
-        annotated = results[0].plot()
+        rendered_rgb = results.render()[0]
+        annotated = cv2.cvtColor(rendered_rgb, cv2.COLOR_RGB2BGR)
 
         current_time = time.time()
         fps = 1.0 / max(current_time - prev_time, 1e-6)
