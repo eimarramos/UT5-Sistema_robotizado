@@ -206,6 +206,43 @@ python third_party\yolov5\detect.py --weights runs/detect/chess_nano_v5/weights/
 
 ### Jetson Nano
 
+Comandos exactos desde la raiz del proyecto:
+
+```bash
+# 1) Clonar TU proyecto en el Jetson (si aun no lo tienes)
+cd ~
+git clone <URL_DE_TU_REPO> UT5-Sistema_robotizado
+
+# 2) Entrar a la raiz del proyecto
+cd ~/UT5-Sistema_robotizado
+
+# 3) Crear y activar entorno virtual
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip setuptools wheel
+
+# 4) Clonar YOLOv5 dentro del proyecto (exactamente aqui)
+mkdir -p third_party
+git clone https://github.com/ultralytics/yolov5.git third_party/yolov5
+
+# 5) Instalar dependencias Python del proyecto/YOLOv5
+pip3 install pyyaml
+pip3 install -r third_party/yolov5/requirements.txt
+
+# 6) Verificar CUDA en Jetson
+python3 -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+
+# 7) Ejecutar inferencia en tiempo real desde la raiz del proyecto
+python3 realtime_inferencia.py --model runs/detect/chess_nano_v5/weights/best.pt --yolov5-dir third_party/yolov5 --device cuda:0 --backend any --imgsz 416 --camera 0
+```
+
+Si `third_party/yolov5` ya existe:
+
+```bash
+cd ~/UT5-Sistema_robotizado
+git -C third_party/yolov5 pull
+```
+
 1. Copiar al Nano:
 
 - `runs/detect/.../weights/best.pt`
