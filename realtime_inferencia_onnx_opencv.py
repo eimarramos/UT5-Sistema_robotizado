@@ -142,6 +142,18 @@ def letterbox(image, new_shape, color=(114, 114, 114)):
 def load_net(model_path, dnn_target):
     net = cv2.dnn.readNetFromONNX(str(model_path))
     if dnn_target == "cuda":
+        cuda_devices = 0
+        try:
+            cuda_devices = cv2.cuda.getCudaEnabledDeviceCount()
+        except Exception:
+            cuda_devices = 0
+
+        if cuda_devices < 1 or "NVIDIA CUDA" not in cv2.getBuildInformation():
+            print("OpenCV DNN: CUDA no disponible en esta instalacion, usando CPU")
+            net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
+            net.setPreferableTarget(cv2.dnn.DNN_TARGET_CPU)
+            return net
+
         try:
             net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
             net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA_FP16)
