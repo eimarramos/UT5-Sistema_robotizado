@@ -1,5 +1,6 @@
 import argparse
 import ast
+import glob
 import platform
 import time
 from pathlib import Path
@@ -45,8 +46,13 @@ def parse_args():
         "--backend",
         type=str,
         default="auto",
-        choices=["auto", "dshow", "msmf", "gstreamer", "any"],
+        choices=["auto", "dshow", "msmf", "gstreamer", "v4l2", "any"],
         help="Backend de camara",
+    )
+    parser.add_argument(
+        "--list-cameras",
+        action="store_true",
+        help="Listar camaras disponibles y salir",
     )
     parser.add_argument(
         "--dnn-target",
@@ -91,10 +97,12 @@ def open_camera(camera_index, backend, width, height):
         candidates = [cv2.CAP_MSMF]
     elif backend == "gstreamer":
         candidates = [cv2.CAP_GSTREAMER]
+    elif backend == "v4l2":
+        candidates = [cv2.CAP_V4L2]
     elif backend == "any":
         candidates = [cv2.CAP_ANY]
     else:
-        candidates = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY] if win else [cv2.CAP_ANY]
+        candidates = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY] if win else [cv2.CAP_V4L2, cv2.CAP_GSTREAMER, cv2.CAP_ANY]
 
     for api in candidates:
         cap = cv2.VideoCapture(camera_index, api)
@@ -114,6 +122,54 @@ def open_camera(camera_index, backend, width, height):
         cap.release()
 
     raise RuntimeError("No se pudo abrir la camara con indice {}".format(camera_index))
+
+
+def list_cameras(max_index=10):
+    win = platform.system().lower() == "windows"
+    if win:
+        backends = [
+            ("any", cv2.CAP_ANY),
+            ("dshow", cv2.CAP_DSHOW),
+            ("msmf", cv2.CAP_MSMF),
+        ]
+    else:
+        devices = sorted(glob.glob("/dev/video*"))
+        if devices:
+            print("Dispositivos encontrados:")
+            for device in devices:
+                print("  {}".format(device))
+        else:
+            print("No se encontraron dispositivos /dev/video*.")
+
+        backends = [
+            ("v4l2", cv2.CAP_V4L2),
+            ("gstreamer", cv2.CAP_GSTREAMER),
+            ("any", cv2.CAP_ANY),
+        ]
+
+    print("Probando indices de camara...")
+    found = False
+    for index in range(max_index):
+        available = []
+        for name, api in backends:
+            cap = cv2.VideoCapture(index, api)
+            ok = cap.isOpened()
+            if ok:
+                ret, _ = cap.read()
+                ok = bool(ret)
+            cap.release()
+            if ok:
+                available.append(name)
+
+        if available:
+            found = True
+            print("  --camera {} funciona con backend(s): {}".format(index, ", ".join(available)))
+
+    if not found:
+        print("  No se encontro ninguna camara entre los indices 0 y {}.".format(max_index - 1))
+        if not win:
+            print("  Comprueba con: ls -l /dev/video*")
+            print("  Si existe /dev/video1, prueba: --camera 1 --backend v4l2")
 
 
 def letterbox(image, new_shape, color=(114, 114, 114)):
@@ -230,6 +286,10 @@ def draw_detections(frame, detections, names):
 
 def main():
     args = parse_args()
+    if args.list_cameras:
+        list_cameras()
+        return
+
     model_path = Path(args.model)
     if not model_path.exists():
         raise FileNotFoundError("No se encontro el modelo ONNX: {}".format(model_path))
